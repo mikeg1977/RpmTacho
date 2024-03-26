@@ -1,146 +1,79 @@
-#include<ShiftLCD.h>
+/*
+The input for the tacho pulse is intended to come from the injection or spark plug control circuit. 
 
-ShiftLCD lcd(8,10,9);    // DEFINE LCD PINS
+Effectively this means that, for example(s):
+ - For a 6 or 8 cylinder four stroke engine car, each cylinder fires once for every 2 engine cycles, meaning the measured frequency would need to be doubled
+ - If we received a quantity of TOTPULSES over a period of TOTTIME, the RPM would be calculated as follows
+     - Convert TOTPULSES to Revolutions REVOLS = 2 x TOTPULSES
+     - Scale TOTTIME (in ms) to one minute in conjunction with REVOLS. => RPM = (2 x TOTPULSES) x (1000 x 60)/(TOTTIME)
+
+     Generally don't want the system to operate the LED light strip at less than 1000RPM, but operating up to 7000RPM
+     This is equivalent to starting operation at 17 revolutions per second, operating up to 120 revolutions per second
+     As we only see a pulse on every second revolution, this means we want operation circa:
+     8 pulses per second to 60 pulses per second
+
+     */
+
+
+
 
 volatile byte REV;       //  VOLATILE DATA TYPE TO STORE REVOLUTIONS
  
-unsigned long int rpm, maxRPM;  //  DEFINE RPM AND MAXIMUM RPM
+unsigned long rpm, maxRPM;  //  DEFINE RPM AND MAXIMUM RPM
  
-unsigned long time;         //  DEFINE TIME TAKEN TO COVER ONE REVOLUTION
- 
-int ledPin = 12;           //   STATUS LED
- 
-int led = 0,RPMlen , prevRPM;  //  INTEGERS TO STORE LED VALUE AND CURRENT RPM AND PREVIOUS RPM
- 
-int flag = 0;             //  A VARIABLE TO DETERMINE WHETHER THE LCD NEEDS TO BE CLEARED OR NOT
+unsigned long eltime;         //  DEFINE TIME TAKEN TO COVER ONE REVOLUTION
 
-long prevtime = 0;       //  STORE IDLE TIME TO TOGGLE MENU
+unsigned long prevtime;       //  STORE IDLE TIME TO TOGGLE MENU
+
+ void ICACHE_RAM_ATTR RPMCount()                                // EVERYTIME WHEN THE SENSOR GOES FROM LOW TO HIGH , THIS FUNCTION WILL BE INVOKED 
+ {
+   REV++;                                         // INCREASE REVOLUTIONS
+      
+ }
     
  void setup()
  {
      Serial.begin(9600);   // GET VALUES USING SERIAL MONITOR
      
-     lcd.begin(16, 2);     // INITIATE LCD
-     
-     attachInterrupt(0, RPMCount, RISING);     //  ADD A HIGH PRIORITY ACTION ( AN INTERRUPT)  WHEN THE SENSOR GOES FROM LOW TO HIGH
+     attachInterrupt(4, RPMCount, RISING);     //  ADD A HIGH PRIORITY ACTION ( AN INTERRUPT)  WHEN THE SENSOR GOES FROM LOW TO HIGH
      
      REV = 0;      //  START ALL THE VARIABLES FROM 0
-     
+     eltime = 0;
      rpm = 0;
+     prevtime = 0;
      
-     time = 0;
-     
-     pinMode(ledPin, OUTPUT);
-     
-     pinMode(3, OUTPUT);           
-     
-     pinMode(4, OUTPUT);
-     
-     digitalWrite(3, HIGH);             //  VCC PIN FOR SENSOR
-     
-     digitalWrite(4, LOW);              // GND PIN FOR SENSOR
-     
-     lcd.print("TACHOMETER");           //   STARTUP TEXT
-     lcd.setCursor(0, 1);
-     lcd.print("- ELECTRO18");          //  THAT'S ME
-     delay(2000);
-     lcd.clear();
-     
+    
  }
  
  void loop()
  {
-  long currtime = millis();                 // GET CURRENT TIME
+  unsigned long currtime = millis();                 // GET CURRENT TIME
   
-  long idletime = currtime - prevtime;        //  CALCULATE IDLE TIME
+  unsigned long idletime = currtime - prevtime;        //  CALCULATE IDLE TIME
     
-    if(REV >= 5 )                  //  IT WILL UPDATE AFETR EVERY 5 READINGS
+    if(REV >= 5 )                  //  IT WILL UPDATE AFTER EVERY 5 READINGS
    {
      
-             
-     if(flag==0)                     //  CLEAR THE LCD TO AVOID ANY GARBAGE TEXT
-     {
-       lcd.clear();
-       lcd.print("SENSOR MEASURING");
-       flag=1;                          //   AFTER FLAG = 1 , THE LOOP WILL NOT EXECUTE AGAIN
-     }
      
-     rpm = 30*1000/(millis() - time)*REV;       //  CALCULATE  RPM USING REVOLUTIONS AND ELAPSED TIME
-     
+    rpm = 2*REV*1000*60/(millis()-eltime);            //  RPM = (2 x TOTPULSES) x (1000 x 60)/(TOTTIME)
+
      if(rpm > maxRPM)
      maxRPM = rpm;                             //  GET THE MAX RPM THROUGHOUT THE RUN
     
-     time = millis();                            
+     eltime = millis();                            
      
      REV = 0;
-     
-     int x= rpm;                                //  CALCULATE NUMBER OF DIGITS IN RPM
-     while(x!=0)
-     {
-       x = x/10;
-       RPMlen++;
-     }       
-          
-     
-     
-     if(RPMlen!=prevRPM)                             // IF THE RPM FALLS TO A LOWER NUMBER WITH LESS DIGITS , THE LCD WILL GET CLEARED
-     {
-       lcd.clear();
-       prevRPM = RPMlen;
-       flag=0;
-       lcd.print("SENSOR MEASURING");
-     }
-     
-     lcd.setCursor(0, 1);
-     lcd.print(rpm,DEC);                        //  PRINT RPM IN DECIMAL SYSTEM
-     
-     lcd.setCursor(6,1);
-     lcd.print("RPM");
-     delay(500);
-     
-     prevtime = currtime;                        // RESET IDLETIME
-    
-   }
-   
-   if(idletime > 5000 )                      //  IF THERE ARE NO READING FOR 5 SEC , THE SCREEN WILL SHOW MAX RPM
-   {
-     
-     if(flag==1)                            // CLEAR THE LCD
-     {
-       lcd.clear();
-       flag=0;
-     }
-     
-     lcd.clear();
-     lcd.print("MAXIMUM RPM");
-     lcd.setCursor(0, 1);
-     lcd.print(maxRPM,DEC);                     // DISPLAY MAX RPM
-     lcd.print("   RPM");
-     delay(2000);
-     lcd.clear();
-     lcd.print("IDLE STATE");
-     lcd.setCursor(0, 1);
-     lcd.print("READY TO MEASURE");
-     delay(2000);
+        
      prevtime = currtime;
+     Serial.print("RPM = ");
+     Serial.print(rpm);
+     Serial.print("     Max RPM = ");
+     Serial.print(maxRPM);
+     Serial.println();
+
    }
      
  }
  
- void RPMCount()                                // EVERYTIME WHEN THE SENSOR GOES FROM LOW TO HIGH , THIS FUNCTION WILL BE INVOKED 
- {
-   REV++;                                         // INCREASE REVOLUTIONS
-   
-   if (led == LOW)
-   {
-     
-     led = HIGH;                                 //  TOGGLE STATUS LED
-   } 
-   
-   else
-   {
-     led = LOW;
-   }
-   digitalWrite(ledPin, led);
- }
+
 //////////////////////////////////////////////////////////////  END OF THE PROGRAM  ///////////////////////////////////////////////////////////////////////
